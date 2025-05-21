@@ -19,6 +19,25 @@ const userSchema = new mongoose.Schema({
     required: true,
     minlength: 6
   },
+  profile: {
+    location: {
+      type: String,
+      trim: true
+    },
+    yearsOfExperience: {
+      type: Number,
+      min: 0
+    },
+    skills: [{
+      type: String,
+      trim: true
+    }],
+    preferredJobType: {
+      type: String,
+      enum: ['remote', 'onsite', 'any'],
+      default: 'any'
+    }
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],
@@ -41,9 +60,13 @@ userSchema.pre('save', async function(next) {
   }
 });
 
-// Method to compare password
+// Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
+  try {
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    throw new Error('Error comparing passwords');
+  }
 };
 
 const User = mongoose.model('User', userSchema);

@@ -1,42 +1,22 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
-const { auth, adminAuth } = require('../middleware/auth.middleware');
 const Job = require('../models/job.model');
+const User = require('../models/user.model');
+const auth = require('../middleware/auth');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const router = express.Router();
 
-// Validation middleware
-const validateJob = [
-  body('title').trim().notEmpty().withMessage('Job title is required'),
-  body('company').trim().notEmpty().withMessage('Company name is required'),
-  body('location').trim().notEmpty().withMessage('Location is required'),
-  body('skillsRequired')
-    .isArray()
-    .withMessage('Skills must be an array')
-    .notEmpty()
-    .withMessage('At least one skill is required'),
-  body('description').trim().notEmpty().withMessage('Description is required'),
-  body('jobType')
-    .isIn(['remote', 'onsite', 'hybrid'])
-    .withMessage('Invalid job type')
-];
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Get all jobs
 router.get('/', async (req, res) => {
   try {
-    const jobs = await Job.find({ isActive: true })
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      data: jobs
-    });
+    const jobs = await Job.find({ isActive: true }).sort({ createdAt: -1 });
+    res.json({ success: true, jobs });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching jobs',
-      error: error.message
-    });
+    console.error('Error fetching jobs:', error);
+    res.status(500).json({ success: false, message: 'Error fetching jobs' });
   }
 });
 
@@ -44,114 +24,160 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const job = await Job.findById(req.params.id);
-
     if (!job) {
-      return res.status(404).json({
-        success: false,
-        message: 'Job not found'
-      });
+      return res.status(404).json({ success: false, message: 'Job not found' });
     }
-
-    res.json({
-      success: true,
-      data: job
-    });
+    res.json({ success: true, job });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching job',
-      error: error.message
-    });
+    console.error('Error fetching job:', error);
+    res.status(500).json({ success: false, message: 'Error fetching job' });
   }
 });
 
-// Create new job (admin only)
-router.post('/', adminAuth, validateJob, async (req, res) => {
+// Create job (admin only)
+router.post('/', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array()
-      });
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const job = new Job(req.body);
-    await job.save();
+    const job = new Job({
+      ...req.body,
+      postedBy: req.user._id,
+      isActive: true
+    });
 
-    res.status(201).json({
-      success: true,
-      message: 'Job created successfully',
-      data: job
-    });
+    await job.save();
+    res.status(201).json({ success: true, job });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error creating job',
-      error: error.message
-    });
+    console.error('Error creating job:', error);
+    res.status(500).json({ success: false, message: 'Error creating job' });
   }
 });
 
 // Update job (admin only)
-router.put('/:id', adminAuth, validateJob, async (req, res) => {
+router.put('/:id', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array()
-      });
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
     const job = await Job.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      { ...req.body, updatedAt: new Date() },
       { new: true, runValidators: true }
     );
 
     if (!job) {
-      return res.status(404).json({
-        success: false,
-        message: 'Job not found'
-      });
+      return res.status(404).json({ success: false, message: 'Job not found' });
     }
 
-    res.json({
-      success: true,
-      message: 'Job updated successfully',
-      data: job
-    });
+    res.json({ success: true, job });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating job',
-      error: error.message
-    });
+    console.error('Error updating job:', error);
+    res.status(500).json({ success: false, message: 'Error updating job' });
   }
 });
 
 // Delete job (admin only)
-router.delete('/:id', adminAuth, async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
-    const job = await Job.findByIdAndDelete(req.params.id);
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
 
+    const job = await Job.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false },
+      { new: true }
+    );
+    
     if (!job) {
-      return res.status(404).json({
-        success: false,
-        message: 'Job not found'
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    res.json({ success: true, message: 'Job deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting job:', error);
+    res.status(500).json({ success: false, message: 'Error deleting job' });
+  }
+});
+
+// Get job matches using AI
+router.post('/matches', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user || !user.profile) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please complete your profile first' 
       });
     }
 
-    res.json({
-      success: true,
-      message: 'Job deleted successfully'
+    const jobs = await Job.find({ isActive: true });
+    if (!jobs.length) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No jobs available' 
+      });
+    }
+
+    // Prepare the prompt for Gemini
+    const prompt = `Given the following user profile and job listings, find the top 3 most suitable job matches based on skills match, experience level, location preference, and job type preference.
+
+User Profile:
+- Skills: ${user.profile.skills.join(', ')}
+- Years of Experience: ${user.profile.yearsOfExperience}
+- Preferred Job Type: ${user.profile.preferredJobType}
+- Location: ${user.profile.location}
+
+Available Jobs:
+${jobs.map(job => `
+Job Title: ${job.title}
+Company: ${job.company}
+Location: ${job.location}
+Type: ${job.type}
+Required Skills: ${job.skills.join(', ')}
+Description: ${job.description}
+`).join('\n')}
+
+Please analyze the matches based on:
+1. Skills match (highest priority)
+2. Job type preference match
+3. Location compatibility
+4. Experience level suitability
+
+Return only the job titles of the top 3 most suitable matches, separated by commas.`;
+
+    // Get model and generate content
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const matchedJobTitles = response.text()
+      .split(',')
+      .map(title => title.trim());
+
+    // Get the matched jobs and sort them by match quality
+    const matchedJobs = jobs.filter(job => 
+      matchedJobTitles.includes(job.title)
+    ).sort((a, b) => {
+      // Sort by number of matching skills
+      const aSkillMatches = a.skills.filter(skill => 
+        user.profile.skills.includes(skill)
+      ).length;
+      const bSkillMatches = b.skills.filter(skill => 
+        user.profile.skills.includes(skill)
+      ).length;
+      return bSkillMatches - aSkillMatches;
     });
+
+    res.json({ success: true, matches: matchedJobs });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting job',
-      error: error.message
+    console.error('Error finding job matches:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error finding job matches',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

@@ -1,97 +1,98 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Job = require('../models/job.model');
+const User = require('../models/user.model');
 
 const jobs = [
   {
     title: 'Senior Frontend Developer',
     company: 'TechCorp',
     location: 'San Francisco, CA',
-    skillsRequired: ['React', 'TypeScript', 'Node.js', 'AWS'],
-    description: 'Looking for an experienced frontend developer to join our team...',
-    jobType: 'remote',
-    salary: {
-      min: 120000,
-      max: 160000,
-      currency: 'USD'
-    }
+    type: 'remote',
+    skills: ['React', 'TypeScript', 'JavaScript', 'HTML', 'CSS'],
+    description: 'Looking for an experienced frontend developer to join our team.',
+    salary: '$120k - $150k'
   },
   {
     title: 'Full Stack Developer',
-    company: 'InnovateTech',
+    company: 'StartupX',
     location: 'New York, NY',
-    skillsRequired: ['JavaScript', 'Python', 'MongoDB', 'React'],
-    description: 'Join our growing team as a full stack developer...',
-    jobType: 'hybrid',
-    salary: {
-      min: 100000,
-      max: 140000,
-      currency: 'USD'
-    }
+    type: 'hybrid',
+    skills: ['Node.js', 'React', 'MongoDB', 'Express', 'JavaScript'],
+    description: 'Join our fast-growing startup as a full stack developer.',
+    salary: '$100k - $130k'
   },
   {
-    title: 'Backend Engineer',
-    company: 'DataSystems',
+    title: 'Backend Developer',
+    company: 'Enterprise Solutions',
     location: 'Austin, TX',
-    skillsRequired: ['Node.js', 'MongoDB', 'AWS', 'Docker'],
-    description: 'We are seeking a backend engineer to build scalable systems...',
-    jobType: 'onsite',
-    salary: {
-      min: 110000,
-      max: 150000,
-      currency: 'USD'
-    }
+    type: 'onsite',
+    skills: ['Python', 'Django', 'PostgreSQL', 'AWS', 'Docker'],
+    description: 'Backend developer position with focus on scalable applications.',
+    salary: '$110k - $140k'
   },
   {
     title: 'DevOps Engineer',
     company: 'CloudTech',
     location: 'Seattle, WA',
-    skillsRequired: ['AWS', 'Docker', 'Kubernetes', 'CI/CD'],
-    description: 'Join our DevOps team to help build and maintain our infrastructure...',
-    jobType: 'remote',
-    salary: {
-      min: 130000,
-      max: 170000,
-      currency: 'USD'
-    }
+    type: 'remote',
+    skills: ['Kubernetes', 'Docker', 'AWS', 'CI/CD', 'Linux'],
+    description: 'DevOps engineer to manage our cloud infrastructure.',
+    salary: '$130k - $160k'
   },
   {
-    title: 'Mobile Developer',
-    company: 'AppWorks',
-    location: 'Boston, MA',
-    skillsRequired: ['React Native', 'JavaScript', 'iOS', 'Android'],
-    description: 'Looking for a mobile developer to build cross-platform apps...',
-    jobType: 'hybrid',
-    salary: {
-      min: 90000,
-      max: 130000,
-      currency: 'USD'
-    }
+    title: 'UI/UX Designer',
+    company: 'DesignHub',
+    location: 'Los Angeles, CA',
+    type: 'hybrid',
+    skills: ['Figma', 'UI/UX', 'Adobe XD', 'Prototyping', 'User Research'],
+    description: 'Creative UI/UX designer to join our design team.',
+    salary: '$90k - $120k'
   }
 ];
 
 const seedJobs = async () => {
   try {
-    // Connect to MongoDB
     await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB');
+
+    // Create admin user if it doesn't exist
+    let adminUser = await User.findOne({ email: 'admin@skillsync.com' });
+    if (!adminUser) {
+      adminUser = await User.create({
+        name: 'Admin User',
+        email: 'admin@skillsync.com',
+        password: 'admin123',
+        role: 'admin',
+        profile: {
+          location: 'San Francisco, CA',
+          yearsOfExperience: 10,
+          skills: ['Management', 'Leadership'],
+          preferredJobType: 'onsite'
+        }
+      });
+      console.log('Created admin user');
+    }
 
     // Clear existing jobs
     await Job.deleteMany({});
     console.log('Cleared existing jobs');
 
-    // Insert new jobs
-    await Job.insertMany(jobs);
-    console.log('Successfully seeded jobs');
+    // Add postedBy field to all jobs
+    const jobsWithAdmin = jobs.map(job => ({
+      ...job,
+      postedBy: adminUser._id
+    }));
 
-    // Disconnect from MongoDB
-    await mongoose.disconnect();
-    console.log('Disconnected from MongoDB');
+    // Insert new jobs
+    const createdJobs = await Job.insertMany(jobsWithAdmin);
+    console.log(`Created ${createdJobs.length} jobs`);
+
+    process.exit(0);
   } catch (error) {
     console.error('Error seeding jobs:', error);
     process.exit(1);
   }
 };
 
-// Run the seeding function
 seedJobs(); 

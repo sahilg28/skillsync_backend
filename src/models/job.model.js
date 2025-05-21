@@ -16,7 +16,12 @@ const jobSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  skillsRequired: [{
+  type: {
+    type: String,
+    enum: ['remote', 'onsite', 'hybrid'],
+    required: true
+  },
+  skills: [{
     type: String,
     trim: true
   }],
@@ -24,18 +29,14 @@ const jobSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  jobType: {
-    type: String,
-    enum: ['remote', 'onsite', 'hybrid'],
-    required: true
-  },
   salary: {
-    min: Number,
-    max: Number,
-    currency: {
-      type: String,
-      default: 'USD'
-    }
+    type: String,
+    trim: true
+  },
+  postedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   },
   isActive: {
     type: Boolean,
@@ -45,8 +46,10 @@ const jobSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index for better search performance
-jobSchema.index({ title: 'text', company: 'text', skillsRequired: 'text' });
+// Create text indexes individually for better control
+jobSchema.index({ title: 'text' });
+jobSchema.index({ company: 'text' });
+jobSchema.index({ skills: 'text' });
 
 const Job = mongoose.model('Job', jobSchema);
 

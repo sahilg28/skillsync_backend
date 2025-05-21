@@ -5,18 +5,16 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth.routes');
 const profileRoutes = require('./routes/profile.routes');
 const jobRoutes = require('./routes/job.routes');
-const adminRoutes = require('./routes/admin.routes');
-const recommendationRoutes = require('./routes/recommendation.routes');
+const matchingRoutes = require('./routes/matching.routes');
 
 const app = express();
 
 // CORS Configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Your frontend URL
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173', // Vite default port
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  maxAge: 86400 // 24 hours
+  credentials: true
 };
 
 // Middleware
@@ -37,8 +35,7 @@ mongoose.connect(process.env.MONGO_URI)
 app.use('/api/auth', authRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/jobs', jobRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/matching', matchingRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

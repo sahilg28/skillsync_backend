@@ -2,6 +2,8 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
+const bcrypt = require('bcryptjs');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -24,24 +26,67 @@ const validateLogin = [
   body('password').notEmpty().withMessage('Password is required')
 ];
 
+// Get user profile
+router.get('/profile', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({ user });
+  } catch (error) {
+    console.error('Profile error:', error);
+    res.status(500).json({ message: 'Error fetching profile' });
+  }
+});
+
+// Update user profile
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { profile } = req.body;
+    
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.profile = {
+      ...user.profile,
+      ...profile
+    };
+
+    await user.save();
+    res.json({ 
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profile: user.profile
+      }
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ message: 'Error updating profile' });
+  }
+});
+
 // Signup route
 router.post('/signup', validateSignup, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
-        success: false,
-        errors: errors.array()
+        message: errors.array()[0].msg
       });
     }
 
     const { name, email, password } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({
-        success: false,
         message: 'User already exists'
       });
     }
@@ -49,13 +94,13 @@ router.post('/signup', validateSignup, async (req, res) => {
     // Create new user
     const user = new User({
       name,
-      email,
-      password
+      email: email.toLowerCase(),
+      password,
     });
 
     await user.save();
 
-    // Generate JWT token
+    // Generate token
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET,
@@ -63,23 +108,18 @@ router.post('/signup', validateSignup, async (req, res) => {
     );
 
     res.status(201).json({
-      success: true,
       message: 'User created successfully',
-      data: {
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        }
-      }
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
     });
   } catch (error) {
+    console.error('Signup error:', error);
     res.status(500).json({
-      success: false,
-      message: 'Error creating user',
-      error: error.message
+      message: 'Error creating user'
     });
   }
 });
@@ -90,18 +130,16 @@ router.post('/login', validateLogin, async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
-        success: false,
-        errors: errors.array()
+        message: errors.array()[0].msg
       });
     }
 
     const { email, password } = req.body;
 
     // Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       return res.status(401).json({
-        success: false,
         message: 'Invalid credentials'
       });
     }
@@ -110,12 +148,11 @@ router.post('/login', validateLogin, async (req, res) => {
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
-        success: false,
         message: 'Invalid credentials'
       });
     }
 
-    // Generate JWT token
+    // Generate token
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET,
@@ -123,23 +160,18 @@ router.post('/login', validateLogin, async (req, res) => {
     );
 
     res.json({
-      success: true,
       message: 'Login successful',
-      data: {
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        }
-      }
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
     });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({
-      success: false,
-      message: 'Error logging in',
-      error: error.message
+      message: 'Error logging in'
     });
   }
 });
