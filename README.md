@@ -10,6 +10,8 @@ npm install
 
 # Set up environment variables
 cp .env.example .env
+# Add your frontend URL to .env:
+# FRONTEND_URL=http://localhost:3000
 
 # Start development server
 npm run dev

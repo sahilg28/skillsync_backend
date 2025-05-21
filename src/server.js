@@ -10,8 +10,17 @@ const recommendationRoutes = require('./routes/recommendation.routes');
 
 const app = express();
 
+// CORS Configuration
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Your frontend URL
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  maxAge: 86400 // 24 hours
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Health check endpoint
